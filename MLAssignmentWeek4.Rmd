@@ -1,0 +1,87 @@
+---
+title: "Machine Learning Assignment"
+author: "Sandheep Sebastian"                        
+date: "September 10, 2017"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, warning=FALSE, message=FALSE)
+```
+### Executive SUmmary
+In this assignement, we are going to study the data collected from personal activity tracker devices of 6 participants to study patterns in their behavious. Using this data we are going to build a prediction model to predict how well each participant will perform a task, based on accelerometer readings from the belt, forearm, arm and dumbells of the participants.
+
+
+####Data Loading and Exploratory Data Analysis
+Loading the data from the csv files into dataframe. We are assuming the testing data to be the final validation dataset on which we need to predict the "classe" of each observation and we are not going to use it till we are ready for the final prediction.
+```{r cache=TRUE}
+dfpmltraining<-read.csv("pml-training.csv")
+dfpmlvalidation<-read.csv("pml-testing.csv")
+
+dfpmltraining[dfpmltraining==""]<-NA
+dfpmltraining<-dfpmltraining[ , colSums(is.na(dfpmltraining)) == 0]
+```
+
+We are going to start with the training dataset. We will create Test and Training daatsets from the training.csv, using 70% of the data for training and the remaining for testing purposes.
+```{r cache=TRUE}
+library(caret)
+intrain <- createDataPartition(y = dfpmltraining$classe, p = 0.7, list = FALSE)
+trainingdata<-dfpmltraining[intrain,]
+testdata<-dfpmltraining[-intrain,]
+testtraindatadetails<-data.frame(Test=dim(testdata),Train=dim(trainingdata),row.names = c("Rows","Columns"))
+testtraindatadetails
+```
+
+We are then going to process the training dataset to remobe null values and columns that do not provide useful information for creating a prediction model. The plot generated shows how some of the predictors are related to the classe variable.
+
+```{r cache=TRUE}
+trainingdata<-trainingdata[,-c(1:2,5:7)]
+idnearzerovar<-nearZeroVar(trainingdata,saveMetrics = TRUE)
+xtraindata=trainingdata[,names(trainingdata) != "classe" & grepl( "^Total" , names( trainingdata ),ignore.case = TRUE ) ]
+featurePlot(x=xtraindata,
+            y=trainingdata$classe,
+            plot="pairs"
+            )
+```
+
+We are going to start building a model using the training dataset. We tune the prediction with a 5 K fold cross validation with two repitions.
+We are then going to build two models, one which uses classification methodology and the other that uses random forest and then pick the model that provides the best accuracy. The output variable classe is realted with all the other reamining predictor variables in the training dataset.
+
+```{r cache=TRUE}
+control = trainControl(method="repeatedcv", number=5, repeats=2)
+modelclass<-train(classe~., data=trainingdata, method="rpart", trControl=control)
+modelrf<-train(classe~., data=trainingdata, method="rf", trControl=control)
+```
+
+Using the model to predict the answers in our testing dataset to pick the best model
+```{r cache=TRUE}
+predictclass <- predict(modelclass,testdata)
+predictrf <- predict(modelrf,testdata)
+modelrfaccuracy<-confusionMatrix(predictrf, testdata$classe)$overall['Accuracy']
+modelclassaccuracy<-confusionMatrix(predictclass, testdata$classe)$overall['Accuracy']
+dfAccuracy<-data.frame(RandomForest=modelrfaccuracy,Classification=modelclassaccuracy,row.names = "Accuracy")
+```
+
+As you can see from the accuracy matrix, random forest methodology provides the best prediction for our Test dataset
+```{r}
+dfAccuracy
+```
+
+We then calculate the Out of sample error rate.
+```{r}
+OutOfSampleError <- sum(predictrf != testdata$classe)/length(predictrf)
+modeldetails<-data.frame(Accuracy=modelrfaccuracy,OutofSampleError=OutOfSampleError)
+modeldetails
+```
+
+Finally we apply our prediction model on our test dataset.
+```{r}
+validatepredict<-predict(modelrf,dfpmlvalidation)
+```
+
+####Conclusions
+We built a highly accurate model to predict the classe of the fitness a person can belong to from accelerometer reading. On applying the selected model on the validation dataset, the result we get is as shown below.
+
+```{r}
+validatepredict
+```
